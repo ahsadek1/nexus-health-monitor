@@ -37,10 +37,10 @@ app = FastAPI(title="Nexus Health Monitor v2", version="2.0.0")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-TG_BOT_TOKEN   = os.getenv("TG_BOT_TOKEN",   "8747601602:AAGTzRd3NJWq44Bvbzd5JvhtnO2edBUvjbc")
+TG_BOT_TOKEN   = os.getenv("TG_BOT_TOKEN",   "")
 HEALTH_GROUP   = os.getenv("HEALTH_GROUP_ID", "-5184172590")
 AHMED_DM       = os.getenv("AHMED_CHAT_ID",   "8573754783")
-NEXUS_SECRET   = os.getenv("NEXUS_SECRET",    "62d7ecd98c8e298916c6c87555eac10e7a701cd9be86db27561593a9122244d2")
+NEXUS_SECRET   = os.getenv("NEXUS_SECRET",    "")
 RAILWAY_TOKEN  = os.getenv("RAILWAY_TOKEN",   "")
 
 HEARTBEAT_INTERVAL_SEC = 30    # agents push every 30s

@@ -561,21 +561,8 @@ def _monitor_loop():
     global _last_pulse_hour
     print(f"[MONITOR] 🟢 Nexus Health Monitor v2 started — {_et_full()}")
 
-    _tg(HEALTH_GROUP, (
-        f"🟢 <b>NEXUS HEALTH MONITOR v2 ONLINE</b>\n\n"
-        f"Started: {_et_full()}\n"
-        f"Watching: Axiom 🔷 | Alpha 🔵 | Prime 🟢\n\n"
-        f"<b>Detection layers:</b>\n"
-        f"  💓 Heartbeat — alert in &lt;60s of outage\n"
-        f"  🔍 Poll — backup check every 5 min\n\n"
-        f"<b>On failure:</b>\n"
-        f"  → Diagnostic runs immediately\n"
-        f"  → Failure type identified\n"
-        f"  → Heal action dispatched\n"
-        f"  → Recovery confirmed\n\n"
-        f"Auto-redeploy: {'✅ enabled' if RAILWAY_TOKEN else '⚠️ needs RAILWAY_TOKEN'}\n"
-        f"Source: <b>Railway cloud</b> (independent of Mac mini)"
-    ))
+    # Silent startup — no noise unless something is wrong
+    logger.info("Nexus Health Monitor v2 started at %s", _et_full())
 
     while True:
         try:
@@ -584,7 +571,10 @@ def _monitor_loop():
                 h = datetime.datetime.now(ET_TZ).hour
                 if h != _last_pulse_hour:
                     _last_pulse_hour = h
-                    _send_pulse()
+                    # Only send hourly pulse if something is degraded — silent when all UP
+                    all_healthy = all(s["status"] == "UP" for s in _state.values())
+                    if not all_healthy:
+                        _send_pulse()
         except Exception as e:
             print(f"[MONITOR] Loop error: {e}")
         time.sleep(POLL_INTERVAL_SEC)
@@ -634,3 +624,4 @@ def test_cycle(x_nexus_secret: Optional[str] = Header(None)):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+

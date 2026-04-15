@@ -621,7 +621,96 @@ def test_cycle(x_nexus_secret: Optional[str] = Header(None)):
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 
+
+
+# ── Resilience Module Health Checks ──────────────────────────────────────────
+
+def check_resilience_modules(alpha_health: dict) -> dict:
+    """
+    Check health of all resilience framework modules via Alpha /health endpoint.
+    Called as part of the extended health check cycle.
+    """
+    results = {}
+    
+    # These modules report their status through Alpha /health
+    scanner     = alpha_health.get("omni_scanner", {})
+    execution   = alpha_health.get("execution_paused", False)
+    pending     = alpha_health.get("pending", 0)
+    l11         = alpha_health.get("layer11", {})
+    
+    # Pending queue check
+    if pending > 50:
+        results["pending_queue"] = {
+            "status": "CRITICAL",
+            "detail": f"pending={pending} (>50 — possible explosion)"
+        }
+    elif pending > 25:
+        results["pending_queue"] = {
+            "status": "WARNING",
+            "detail": f"pending={pending} elevated"
+        }
+    else:
+        results["pending_queue"] = {"status": "OK", "detail": f"pending={pending}"}
+    
+    # Execution gate
+    results["execution_gate"] = {
+        "status": "PAUSED" if execution else "OK",
+        "detail": f"execution_paused={execution}"
+    }
+    
+    # Scanner loop
+    results["scanner_loop"] = {
+        "status": "OK" if scanner.get("loop_active") else "DEAD",
+        "detail": f"loop_active={scanner.get('loop_active')} cycles={scanner.get('total_cycles',0)}"
+    }
+    
+    # Layer 11 AGENT_SILENCE
+    l11_failures = l11.get("active_failures", [])
+    if "AGENT_SILENCE" in l11_failures:
+        results["agent_silence"] = {
+            "status": "WARNING",
+            "detail": "Layer 11 detecting agent silence — check agent submissions"
+        }
+    else:
+        results["agent_silence"] = {"status": "OK", "detail": "agents submitting normally"}
+    
+    return results
+
+
+def check_dashboard(alpha_url: str, nexus_secret: str) -> Optional[dict]:
+    """Call Alpha /dashboard for unified resilience status."""
+    try:
+        r = requests.get(
+            f"{alpha_url}/dashboard",
+            headers={"X-Nexus-Secret": nexus_secret},
+            timeout=15,
+        )
+        return r.json() if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+
+def _get_resilience_summary() -> dict:
+    """Quick resilience status from last Alpha health fetch."""
+    try:
+        alpha_url = os.getenv("ALPHA_URL", "https://worker-production-2060.up.railway.app")
+        r = requests.get(f"{alpha_url}/health", timeout=8)
+        if r.status_code == 200:
+            h = r.json()
+            return {
+                "pending":          h.get("pending", 0),
+                "execution_paused": h.get("execution_paused", False),
+                "loop_active":      h.get("omni_scanner", {}).get("loop_active", False),
+                "go_today":         h.get("omni_scanner", {}).get("go_count", 0),
+                "layer11":          h.get("layer11", {}).get("state", "unknown"),
+            }
+    except Exception:
+        pass
+    return {}
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
 

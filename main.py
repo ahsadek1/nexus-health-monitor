@@ -37,10 +37,10 @@ app = FastAPI(title="Nexus Health Monitor v2", version="2.0.0")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-TG_BOT_TOKEN   = os.getenv("TG_BOT_TOKEN",   "")
-HEALTH_GROUP   = os.getenv("HEALTH_GROUP_ID", "-5184172590")
+TG_BOT_TOKEN   = os.getenv("TG_BOT_TOKEN",   "8747601602:AAGTzRd3NJWq44Bvbzd5JvhtnO2edBUvjbc")
+HEALTH_GROUP   = os.getenv("HEALTH_GROUP_ID", "-1003954790884")
 AHMED_DM       = os.getenv("AHMED_CHAT_ID",   "8573754783")
-NEXUS_SECRET   = os.getenv("NEXUS_SECRET",    "")
+NEXUS_SECRET   = os.getenv("NEXUS_SECRET",    "62d7ecd98c8e298916c6c87555eac10e7a701cd9be86db27561593a9122244d2")
 RAILWAY_TOKEN  = os.getenv("RAILWAY_TOKEN",   "")
 
 HEARTBEAT_INTERVAL_SEC = 30    # agents push every 30s
@@ -561,8 +561,21 @@ def _monitor_loop():
     global _last_pulse_hour
     print(f"[MONITOR] 🟢 Nexus Health Monitor v2 started — {_et_full()}")
 
-    # Silent startup — no noise unless something is wrong
-    logger.info("Nexus Health Monitor v2 started at %s", _et_full())
+    _tg(HEALTH_GROUP, (
+        f"🟢 <b>NEXUS HEALTH MONITOR v2 ONLINE</b>\n\n"
+        f"Started: {_et_full()}\n"
+        f"Watching: Axiom 🔷 | Alpha 🔵 | Prime 🟢\n\n"
+        f"<b>Detection layers:</b>\n"
+        f"  💓 Heartbeat — alert in &lt;60s of outage\n"
+        f"  🔍 Poll — backup check every 5 min\n\n"
+        f"<b>On failure:</b>\n"
+        f"  → Diagnostic runs immediately\n"
+        f"  → Failure type identified\n"
+        f"  → Heal action dispatched\n"
+        f"  → Recovery confirmed\n\n"
+        f"Auto-redeploy: {'✅ enabled' if RAILWAY_TOKEN else '⚠️ needs RAILWAY_TOKEN'}\n"
+        f"Source: <b>Railway cloud</b> (independent of Mac mini)"
+    ))
 
     while True:
         try:
@@ -571,10 +584,7 @@ def _monitor_loop():
                 h = datetime.datetime.now(ET_TZ).hour
                 if h != _last_pulse_hour:
                     _last_pulse_hour = h
-                    # Only send hourly pulse if something is degraded — silent when all UP
-                    all_healthy = all(s["status"] == "UP" for s in _state.values())
-                    if not all_healthy:
-                        _send_pulse()
+                    _send_pulse()
         except Exception as e:
             print(f"[MONITOR] Loop error: {e}")
         time.sleep(POLL_INTERVAL_SEC)
@@ -621,96 +631,6 @@ def test_cycle(x_nexus_secret: Optional[str] = Header(None)):
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 
-
-
-# ── Resilience Module Health Checks ──────────────────────────────────────────
-
-def check_resilience_modules(alpha_health: dict) -> dict:
-    """
-    Check health of all resilience framework modules via Alpha /health endpoint.
-    Called as part of the extended health check cycle.
-    """
-    results = {}
-    
-    # These modules report their status through Alpha /health
-    scanner     = alpha_health.get("omni_scanner", {})
-    execution   = alpha_health.get("execution_paused", False)
-    pending     = alpha_health.get("pending", 0)
-    l11         = alpha_health.get("layer11", {})
-    
-    # Pending queue check
-    if pending > 50:
-        results["pending_queue"] = {
-            "status": "CRITICAL",
-            "detail": f"pending={pending} (>50 — possible explosion)"
-        }
-    elif pending > 25:
-        results["pending_queue"] = {
-            "status": "WARNING",
-            "detail": f"pending={pending} elevated"
-        }
-    else:
-        results["pending_queue"] = {"status": "OK", "detail": f"pending={pending}"}
-    
-    # Execution gate
-    results["execution_gate"] = {
-        "status": "PAUSED" if execution else "OK",
-        "detail": f"execution_paused={execution}"
-    }
-    
-    # Scanner loop
-    results["scanner_loop"] = {
-        "status": "OK" if scanner.get("loop_active") else "DEAD",
-        "detail": f"loop_active={scanner.get('loop_active')} cycles={scanner.get('total_cycles',0)}"
-    }
-    
-    # Layer 11 AGENT_SILENCE
-    l11_failures = l11.get("active_failures", [])
-    if "AGENT_SILENCE" in l11_failures:
-        results["agent_silence"] = {
-            "status": "WARNING",
-            "detail": "Layer 11 detecting agent silence — check agent submissions"
-        }
-    else:
-        results["agent_silence"] = {"status": "OK", "detail": "agents submitting normally"}
-    
-    return results
-
-
-def check_dashboard(alpha_url: str, nexus_secret: str) -> Optional[dict]:
-    """Call Alpha /dashboard for unified resilience status."""
-    try:
-        r = requests.get(
-            f"{alpha_url}/dashboard",
-            headers={"X-Nexus-Secret": nexus_secret},
-            timeout=15,
-        )
-        return r.json() if r.status_code == 200 else None
-    except Exception:
-        return None
-
-
-
-def _get_resilience_summary() -> dict:
-    """Quick resilience status from last Alpha health fetch."""
-    try:
-        alpha_url = os.getenv("ALPHA_URL", "https://worker-production-2060.up.railway.app")
-        r = requests.get(f"{alpha_url}/health", timeout=8)
-        if r.status_code == 200:
-            h = r.json()
-            return {
-                "pending":          h.get("pending", 0),
-                "execution_paused": h.get("execution_paused", False),
-                "loop_active":      h.get("omni_scanner", {}).get("loop_active", False),
-                "go_today":         h.get("omni_scanner", {}).get("go_count", 0),
-                "layer11":          h.get("layer11", {}).get("state", "unknown"),
-            }
-    except Exception:
-        pass
-    return {}
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-
-
